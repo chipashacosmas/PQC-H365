@@ -1,0 +1,21 @@
+# Build output
+build/
+*.o
+*.a
+*.so
+*.out
+*.exe
+
+# Node dependencies & logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Local benchmark outputs
+benchmark_results.md
