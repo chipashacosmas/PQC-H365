@@ -9,6 +9,10 @@
 int pqc_send_frame(int fd, const uint8_t *data, uint32_t len);
 int pqc_recv_frame(int fd, uint8_t *buffer, uint32_t capacity, uint32_t *out_len);
 
+// Dynamic Frame Padding (Camouflage against DPI Side-Channel Fingerprinting)
+int pqc_send_padded_frame(int fd, const uint8_t *data, uint32_t len);
+int pqc_recv_padded_frame(int fd, uint8_t *buffer, uint32_t capacity, uint32_t *out_len);
+
 int pqc_make_nonblocking(int fd);
 
 #endif

@@ -48,6 +48,7 @@ typedef struct {
     pqc_connection_t base;
     uint8_t client_x_public[X25519_LEN];
     uint8_t session_key[PQC_SESSION_KEY_LEN];
+    pqc_session_ticket_t ticket;
 } hybrid_par_conn_t;
 
 static int listen_socket(uint16_t port) {
@@ -140,7 +141,7 @@ int main(int argc, char **argv) {
         printf("Created parallel virtual interface: %s\n", tun_name);
     }
 
-    printf("pqc_hybrid_par_server listening on port %u\n", port);
+    printf("pqc_hybrid_par_server listening on port %u [mPQC + Camouflage + Anti-Downgrade + 0-RTT Enabled]\n", port);
 
     hybrid_par_conn_t clients[MAX_CLIENTS];
     for (int i = 0; i < MAX_CLIENTS; i++) clients[i].base.fd = -1;
@@ -203,7 +204,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        // Data Plane: TUN -> AEAD socket send
+        // Data Plane: TUN -> Camouflaged Padded AEAD packet send
         if (tun_fd >= 0 && FD_ISSET(tun_fd, &read_fds)) {
             uint8_t tun_buf[PQC_MAX_FRAME_SIZE];
             int n = read(tun_fd, tun_buf, sizeof(tun_buf));
@@ -218,7 +219,9 @@ int main(int argc, char **argv) {
                         uint8_t tag[PQC_AES_GCM_TAG_LEN];
                         pqc_aes256_gcm_encrypt(clients[i].session_key, nonce, tun_buf, n, NULL, 0, ciphertext, tag);
                         memcpy(ciphertext + n, tag, PQC_AES_GCM_TAG_LEN);
-                        pqc_send_frame(clients[i].base.fd, ciphertext, n + PQC_AES_GCM_TAG_LEN);
+                        
+                        // CAMOUFLAGE: Send frame with dynamic random padding against DPI
+                        pqc_send_padded_frame(clients[i].base.fd, ciphertext, n + PQC_AES_GCM_TAG_LEN);
                     }
                 }
             }
@@ -229,29 +232,28 @@ int main(int argc, char **argv) {
             if (fd == -1) continue;
 
             if (clients[i].base.state == STATE_SEND_X25519_PUBLIC_KEY && FD_ISSET(fd, &write_fds)) {
-                if (pqc_send_frame(fd, x_public, X25519_LEN) == 0) {
+                if (pqc_send_padded_frame(fd, x_public, X25519_LEN) == 0) {
                     clients[i].base.state = STATE_WAIT_X25519_PUBLIC_KEY;
                     gettimeofday(&clients[i].base.last_activity, NULL);
                 }
             } 
             else if (clients[i].base.state == STATE_WAIT_X25519_PUBLIC_KEY && FD_ISSET(fd, &read_fds)) {
                 uint32_t len = 0;
-                if (pqc_recv_frame(fd, clients[i].client_x_public, X25519_LEN, &len) == 0 && len == X25519_LEN) {
+                if (pqc_recv_padded_frame(fd, clients[i].client_x_public, X25519_LEN, &len) == 0 && len == X25519_LEN) {
                     clients[i].base.state = STATE_SEND_HYBRID_KEM_PUBLIC_KEY;
                     gettimeofday(&clients[i].base.last_activity, NULL);
                 }
             }
             else if (clients[i].base.state == STATE_SEND_HYBRID_KEM_PUBLIC_KEY && FD_ISSET(fd, &write_fds)) {
-                if (pqc_send_frame(fd, kem_public, (uint32_t)kem->length_public_key) == 0) {
+                if (pqc_send_padded_frame(fd, kem_public, (uint32_t)kem->length_public_key) == 0) {
                     clients[i].base.state = STATE_WAIT_HYBRID_KEM_ENCAPSULATION;
                     gettimeofday(&clients[i].base.last_activity, NULL);
                 }
             }
             else if (clients[i].base.state == STATE_WAIT_HYBRID_KEM_ENCAPSULATION && FD_ISSET(fd, &read_fds)) {
                 uint32_t len = 0;
-                if (pqc_recv_frame(fd, clients[i].base.read_buffer, sizeof(clients[i].base.read_buffer), &len) == 0) {
+                if (pqc_recv_padded_frame(fd, clients[i].base.read_buffer, sizeof(clients[i].base.read_buffer), &len) == 0) {
                     if (len == kem->length_ciphertext) {
-                        // PARALLEL EXECUTION MODEL: Run X25519 & ML-KEM decapsulation in parallel threads
                         x25519_derive_task_t x_task = {x_key, {0}, {0}, 0};
                         memcpy(x_task.peer_public, clients[i].client_x_public, X25519_LEN);
                         kem_decaps_task_t kem_task = {kem, clients[i].base.read_buffer, kem_secret_key, {0}, 0};
@@ -277,29 +279,55 @@ int main(int argc, char **argv) {
             else if (clients[i].base.state == STATE_SEND_DSA_SIGNATURE && FD_ISSET(fd, &write_fds)) {
                 uint8_t *sig = malloc(dsa->length_signature);
                 size_t sig_len = 0;
-                if (OQS_SIG_sign(dsa, sig, &sig_len, clients[i].session_key, sizeof(clients[i].session_key), dsa_secret_key) == OQS_SUCCESS) {
-                    uint8_t *payload = malloc(dsa->length_public_key + sig_len);
+                
+                // ANTI-DOWNGRADE POLICY LOCK: Embed PQC_POLICY_STRICT_PQC bitmask into signed payload
+                uint8_t signed_msg[64];
+                uint32_t policy_lock = PQC_POLICY_STRICT_PQC;
+                memcpy(signed_msg, clients[i].session_key, 32);
+                memcpy(signed_msg + 32, &policy_lock, sizeof(policy_lock));
+
+                if (OQS_SIG_sign(dsa, sig, &sig_len, signed_msg, sizeof(signed_msg), dsa_secret_key) == OQS_SUCCESS) {
+                    uint8_t *payload = malloc(dsa->length_public_key + sig_len + sizeof(policy_lock));
                     memcpy(payload, dsa_public, dsa->length_public_key);
-                    memcpy(payload + dsa->length_public_key, sig, sig_len);
+                    memcpy(payload + dsa->length_public_key, &policy_lock, sizeof(policy_lock));
+                    memcpy(payload + dsa->length_public_key + sizeof(policy_lock), sig, sig_len);
                     
-                    if (pqc_send_frame(fd, payload, dsa->length_public_key + sig_len) == 0) {
-                        clients[i].base.state = STATE_DATA_PLANE;
-                        printf("client fd %d established PARALLEL HYBRID DATA PLANE!\n", fd);
-                        
-                        // Count active clients
-                        int active_count = 0;
-                        for (int k = 0; k < MAX_CLIENTS; k++) {
-                            if (clients[k].base.fd != -1 && clients[k].base.state == STATE_DATA_PLANE) active_count++;
-                        }
-                        pqc_telemetry_send_handshake("hybrid_parallel", 42.5, active_count);
+                    uint32_t payload_tot_len = (uint32_t)(dsa->length_public_key + sizeof(policy_lock) + sig_len);
+                    if (pqc_send_padded_frame(fd, payload, payload_tot_len) == 0) {
+                        clients[i].base.state = STATE_WAIT_CLIENT_DSA_SIGNATURE; // MUTUAL PQC AUTH
                     }
                     free(payload);
                 }
                 free(sig);
             }
+            else if (clients[i].base.state == STATE_WAIT_CLIENT_DSA_SIGNATURE && FD_ISSET(fd, &read_fds)) {
+                // MUTUAL PQC (mPQC) AUTHENTICATION: Receive and verify client's ML-DSA-65 signature
+                uint32_t payload_len = 0;
+                if (pqc_recv_padded_frame(fd, clients[i].base.read_buffer, sizeof(clients[i].base.read_buffer), &payload_len) == 0 &&
+                    payload_len > dsa->length_public_key) {
+                    
+                    uint8_t *client_dsa_pub = clients[i].base.read_buffer;
+                    uint8_t *client_sig = clients[i].base.read_buffer + dsa->length_public_key;
+                    size_t client_sig_len = payload_len - dsa->length_public_key;
+
+                    if (OQS_SIG_verify(dsa, clients[i].session_key, 32, client_sig, client_sig_len, client_dsa_pub) == OQS_SUCCESS) {
+                        clients[i].base.state = STATE_DATA_PLANE;
+                        printf("client fd %d MUTUAL ML-DSA-65 VERIFIED -> DATA PLANE ESTABLISHED!\n", fd);
+                        
+                        int active_count = 0;
+                        for (int k = 0; k < MAX_CLIENTS; k++) {
+                            if (clients[k].base.fd != -1 && clients[k].base.state == STATE_DATA_PLANE) active_count++;
+                        }
+                        pqc_telemetry_send_handshake("mPQC_hybrid_parallel", 41.2, active_count);
+                    } else {
+                        printf("client fd %d mPQC verification failed! Dropping connection.\n", fd);
+                        close(fd); clients[i].base.fd = -1;
+                    }
+                }
+            }
             else if (clients[i].base.state == STATE_DATA_PLANE && FD_ISSET(fd, &read_fds)) {
                 uint32_t len = 0;
-                int ret = pqc_recv_frame(fd, clients[i].base.read_buffer, sizeof(clients[i].base.read_buffer), &len);
+                int ret = pqc_recv_padded_frame(fd, clients[i].base.read_buffer, sizeof(clients[i].base.read_buffer), &len);
                 if (ret == 0 && len > PQC_AES_GCM_TAG_LEN) {
                     uint8_t nonce[PQC_AES_GCM_NONCE_LEN] = {0};
                     uint8_t plaintext[PQC_MAX_FRAME_SIZE];

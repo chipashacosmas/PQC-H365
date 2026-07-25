@@ -19,11 +19,23 @@ typedef enum {
     STATE_WAIT_HYBRID_KEM_ENCAPSULATION,
     STATE_SEND_DSA_SIGNATURE,
     STATE_WAIT_DSA_SIGNATURE,
+    STATE_WAIT_CLIENT_DSA_SIGNATURE,
+    STATE_RESUMPTION_0RTT,
     STATE_ESTABLISHED,
     STATE_DATA_PLANE,
     STATE_ERROR,
     STATE_CLOSED
 } pqc_conn_state_t;
+
+// Security Policy Bitmask (Anti-Downgrade Lock)
+#define PQC_POLICY_STRICT_PQC (1U << 0)
+
+// Quantum-Safe 0-RTT Session Resumption Ticket Structure
+typedef struct {
+    uint8_t ticket_id[16];
+    uint8_t session_key[32];
+    uint64_t expiry_timestamp;
+} pqc_session_ticket_t;
 
 // Crypto-Agility Modes
 typedef enum {

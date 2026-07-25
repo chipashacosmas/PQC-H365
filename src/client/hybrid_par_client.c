@@ -4,6 +4,7 @@
 #include "timing.h"
 #include "tun.h"
 #include "aead.h"
+#include "state_machine.h"
 
 #include <oqs/oqs.h>
 #include <openssl/evp.h>
@@ -104,6 +105,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    uint8_t *client_dsa_pub = malloc(dsa->length_public_key);
+    uint8_t *client_dsa_sec = malloc(dsa->length_secret_key);
+    if (OQS_SIG_keypair(dsa, client_dsa_pub, client_dsa_sec) != OQS_SUCCESS) {
+        fprintf(stderr, "client ML-DSA keypair failed\n");
+        return 1;
+    }
+
     uint8_t server_x_public[X25519_LEN];
     uint8_t *kem_public = malloc(kem->length_public_key);
     uint8_t *kem_ciphertext = malloc(kem->length_ciphertext);
@@ -120,13 +128,13 @@ int main(int argc, char **argv) {
 
     uint32_t server_x_len = 0;
     uint32_t kem_public_len = 0;
-    if (pqc_recv_frame(fd, server_x_public, sizeof(server_x_public), &server_x_len) != 0 ||
-        pqc_recv_frame(fd, kem_public, (uint32_t)kem->length_public_key, &kem_public_len) != 0) {
+    if (pqc_recv_padded_frame(fd, server_x_public, sizeof(server_x_public), &server_x_len) != 0 ||
+        pqc_recv_padded_frame(fd, kem_public, (uint32_t)kem->length_public_key, &kem_public_len) != 0) {
         fprintf(stderr, "failed to receive server public keys\n");
         close(fd); return 1;
     }
 
-    // PARALLEL EXECUTION MODEL: Derive X25519 and Encapsulate ML-KEM-768 concurrently
+    // PARALLEL EXECUTION: Derive X25519 and Encapsulate ML-KEM-768
     x25519_task_t x_task = {0};
     x_task.peer_public = server_x_public;
     kem_task_t kem_task = {kem, kem_public, kem_ciphertext, {0}, 0};
@@ -144,8 +152,8 @@ int main(int argc, char **argv) {
         close(fd); return 1;
     }
 
-    pqc_send_frame(fd, x_task.public_key, X25519_LEN);
-    pqc_send_frame(fd, kem_ciphertext, (uint32_t)kem->length_ciphertext);
+    pqc_send_padded_frame(fd, x_task.public_key, X25519_LEN);
+    pqc_send_padded_frame(fd, kem_ciphertext, (uint32_t)kem->length_ciphertext);
 
     if (pqc_hybrid_session_key(x_task.secret, sizeof(x_task.secret),
                                kem_task.secret, sizeof(kem_task.secret),
@@ -154,34 +162,64 @@ int main(int argc, char **argv) {
         close(fd); return 1;
     }
 
-    // Verify ML-DSA-65 Authentication Signature
+    // Verify Server ML-DSA-65 Signature & Anti-Downgrade Policy
     uint32_t payload_len = 0;
     uint8_t *payload = malloc(PQC_MAX_FRAME_SIZE);
-    if (pqc_recv_frame(fd, payload, PQC_MAX_FRAME_SIZE, &payload_len) != 0 || payload_len < dsa->length_public_key) {
+    if (pqc_recv_padded_frame(fd, payload, PQC_MAX_FRAME_SIZE, &payload_len) != 0 || payload_len < dsa->length_public_key) {
         fprintf(stderr, "failed to receive ML-DSA payload\n");
         close(fd); return 1;
     }
 
     uint8_t *server_dsa_public = payload;
-    uint8_t *server_sig = payload + dsa->length_public_key;
-    size_t sig_len = payload_len - dsa->length_public_key;
+    uint32_t policy_lock = 0;
+    memcpy(&policy_lock, payload + dsa->length_public_key, sizeof(policy_lock));
+    uint8_t *server_sig = payload + dsa->length_public_key + sizeof(policy_lock);
+    size_t sig_len = payload_len - dsa->length_public_key - sizeof(policy_lock);
 
-    if (OQS_SIG_verify(dsa, session_key, sizeof(session_key), server_sig, sig_len, server_dsa_public) != OQS_SUCCESS) {
-        fprintf(stderr, "ML-DSA-65 signature verification failed!\n");
+    uint8_t signed_msg[64];
+    memcpy(signed_msg, session_key, 32);
+    memcpy(signed_msg + 32, &policy_lock, sizeof(policy_lock));
+
+    if (OQS_SIG_verify(dsa, signed_msg, sizeof(signed_msg), server_sig, sig_len, server_dsa_public) != OQS_SUCCESS) {
+        fprintf(stderr, "Server ML-DSA-65 signature verification failed!\n");
         close(fd); return 1;
     }
-    printf("[PASS] Server ML-DSA-65 signature verified (TOFU).\n");
+
+    if (!(policy_lock & PQC_POLICY_STRICT_PQC)) {
+        fprintf(stderr, "ANTI-DOWNGRADE ALERT: Server policy did not mandate PQC enforcement! Aborting.\n");
+        close(fd); return 1;
+    }
+    printf("[PASS] Server ML-DSA-65 signature & Anti-Downgrade Policy Verified.\n");
     free(payload);
+
+    // MUTUAL PQC (mPQC): Client signs session key and sends to server
+    uint8_t *client_sig = malloc(dsa->length_signature);
+    size_t client_sig_len = 0;
+    if (OQS_SIG_sign(dsa, client_sig, &client_sig_len, session_key, 32, client_dsa_sec) != OQS_SUCCESS) {
+        fprintf(stderr, "Client mPQC signing failed\n");
+        close(fd); return 1;
+    }
+
+    uint8_t *client_auth_payload = malloc(dsa->length_public_key + client_sig_len);
+    memcpy(client_auth_payload, client_dsa_pub, dsa->length_public_key);
+    memcpy(client_auth_payload + dsa->length_public_key, client_sig, client_sig_len);
+
+    if (pqc_send_padded_frame(fd, client_auth_payload, (uint32_t)(dsa->length_public_key + client_sig_len)) != 0) {
+        fprintf(stderr, "Failed to send client mPQC auth payload\n");
+        close(fd); return 1;
+    }
+    printf("[PASS] Client ML-DSA-65 signature sent to server (mPQC Complete).\n");
+    free(client_sig); free(client_auth_payload);
 
     uint64_t end = pqc_now_ns();
     pqc_print_secret_sha256_prefix("client session key", session_key, sizeof(session_key));
-    printf("parallel derive+encaps time: %.3f ms\n", pqc_elapsed_ms(crypto_start, crypto_end));
     printf("parallel hybrid handshake time: %.3f ms\n", pqc_elapsed_ms(start, end));
 
     OPENSSL_cleanse(x_task.secret, sizeof(x_task.secret));
     OQS_MEM_cleanse(kem_task.secret, sizeof(kem_task.secret));
     EVP_PKEY_free(x_task.key);
     free(kem_public); free(kem_ciphertext);
+    free(client_dsa_pub); free(client_dsa_sec);
     OQS_KEM_free(kem); OQS_SIG_free(dsa);
 
     // Data Plane setup
@@ -192,7 +230,7 @@ int main(int argc, char **argv) {
         close(fd); return 1;
     }
     printf("Created parallel virtual interface: %s\n", tun_name);
-    printf("Entering PARALLEL HYBRID DATA PLANE. Routing packets...\n");
+    printf("Entering CAMOUFLAGED mPQC DATA PLANE. Routing packets...\n");
 
     pqc_make_nonblocking(fd);
     pqc_make_nonblocking(tun_fd);
@@ -221,13 +259,15 @@ int main(int argc, char **argv) {
                 uint8_t tag[PQC_AES_GCM_TAG_LEN];
                 pqc_aes256_gcm_encrypt(session_key, nonce, tun_buf, n, NULL, 0, ciphertext, tag);
                 memcpy(ciphertext + n, tag, PQC_AES_GCM_TAG_LEN);
-                pqc_send_frame(fd, ciphertext, n + PQC_AES_GCM_TAG_LEN);
+                
+                // CAMOUFLAGE: Padded frame
+                pqc_send_padded_frame(fd, ciphertext, n + PQC_AES_GCM_TAG_LEN);
             }
         }
 
         if (FD_ISSET(fd, &read_fds)) {
             uint32_t len = 0;
-            int ret = pqc_recv_frame(fd, sock_buf, sizeof(sock_buf), &len);
+            int ret = pqc_recv_padded_frame(fd, sock_buf, sizeof(sock_buf), &len);
             if (ret == 0 && len > PQC_AES_GCM_TAG_LEN) {
                 uint8_t nonce[PQC_AES_GCM_NONCE_LEN] = {0};
                 uint8_t plaintext[PQC_MAX_FRAME_SIZE];
