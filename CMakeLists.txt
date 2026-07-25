@@ -23,6 +23,9 @@ add_library(pqc_common
     src/common/state_machine.c
     src/common/tun.c
     src/common/telemetry.c
+    src/common/ztna.c
+    src/common/multipath.c
+    src/common/ebpf_xdp.c
 )
 
 target_include_directories(pqc_common PUBLIC src/common)

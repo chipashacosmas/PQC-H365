@@ -6,6 +6,9 @@
 #include "tun.h"
 #include "aead.h"
 #include "telemetry.h"
+#include "ztna.h"
+#include "multipath.h"
+#include "ebpf_xdp.h"
 
 #include <oqs/oqs.h>
 #include <openssl/evp.h>
@@ -49,6 +52,7 @@ typedef struct {
     uint8_t client_x_public[X25519_LEN];
     uint8_t session_key[PQC_SESSION_KEY_LEN];
     pqc_session_ticket_t ticket;
+    pqc_ztna_policy_t ztna_policy;
 } hybrid_par_conn_t;
 
 static int listen_socket(uint16_t port) {
