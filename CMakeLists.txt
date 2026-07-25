@@ -22,6 +22,7 @@ add_library(pqc_common
     src/common/timing.c
     src/common/state_machine.c
     src/common/tun.c
+    src/common/telemetry.c
 )
 
 target_include_directories(pqc_common PUBLIC src/common)

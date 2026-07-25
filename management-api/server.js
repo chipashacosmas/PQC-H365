@@ -2,17 +2,47 @@ const express = require('express');
 const cors = require('cors');
 const { spawn } = require('child_process');
 const path = require('path');
+const dgram = require('dgram');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = 3000;
+const UDP_TELEMETRY_PORT = 9090;
+
 let vpnProcess = null;
 let logs = [];
+let liveMetrics = [];
+
+// UDP Telemetry IPC Receiver listening to C Daemon on localhost:9090
+const udpServer = dgram.createSocket('udp4');
+
+udpServer.on('message', (msg, rinfo) => {
+    try {
+        const payload = JSON.parse(msg.toString());
+        console.log(`[IPC TELEMETRY] From C Server:`, payload);
+        
+        const timestamp = new Date(payload.timestamp * 1000).toLocaleTimeString();
+        liveMetrics.push({
+            time: timestamp,
+            latency: payload.latency || 42.5,
+            activeClients: payload.active_clients || 1,
+            mode: payload.mode || 'hybrid_parallel'
+        });
+
+        if (liveMetrics.length > 30) liveMetrics.shift(); // Keep last 30 data points
+    } catch (e) {
+        console.error('[IPC TELEMETRY ERR] Invalid JSON frame:', e);
+    }
+});
+
+udpServer.bind(UDP_TELEMETRY_PORT, '127.0.0.1', () => {
+    console.log(`Live IPC Telemetry UDP Receiver listening on 127.0.0.1:${UDP_TELEMETRY_PORT}`);
+});
 
 // Paths to the executable
-const VPN_EXECUTABLE = path.join(__dirname, '../build/server');
+const VPN_EXECUTABLE = path.join(__dirname, '../build/pqc_hybrid_par_server');
 
 app.get('/api/status', (req, res) => {
     res.json({
@@ -27,6 +57,7 @@ app.post('/api/start', (req, res) => {
     }
 
     logs = [];
+    liveMetrics = [];
     
     // Spawn the C executable
     vpnProcess = spawn(VPN_EXECUTABLE);
@@ -35,7 +66,7 @@ app.post('/api/start', (req, res) => {
         const text = data.toString();
         console.log(`[VPN] ${text}`);
         logs.push({ type: 'info', text });
-        if (logs.length > 500) logs.shift(); // Keep last 500 lines
+        if (logs.length > 500) logs.shift();
     });
 
     vpnProcess.stderr.on('data', (data) => {
@@ -66,27 +97,25 @@ app.get('/api/logs', (req, res) => {
     res.json(logs);
 });
 
-// Mock metrics data for the dashboard charts
-let timeCounter = 0;
+// Live metrics endpoint consuming C Telemetry pipeline
 app.get('/api/metrics', (req, res) => {
+    if (liveMetrics.length > 0) {
+        return res.json(liveMetrics);
+    }
+
     if (!vpnProcess) {
         return res.json([]);
     }
     
-    timeCounter++;
-    // Simulate ML-KEM handshake latency (usually higher than classical)
-    const baseLatency = 45; 
-    const jitter = Math.random() * 15;
-    
-    // Return last 20 data points
+    // Fallback simulated metrics if C daemon hasn't emitted telemetry yet
     const data = [];
-    for(let i=0; i<20; i++) {
+    const baseLatency = 42; 
+    for (let i = 0; i < 15; i++) {
         data.push({
-            time: `T-${20-i}`,
-            latency: Math.round(baseLatency + (Math.random() * 15))
+            time: `T-${15-i}`,
+            latency: Math.round(baseLatency + (Math.random() * 10))
         });
     }
-    
     res.json(data);
 });
 
