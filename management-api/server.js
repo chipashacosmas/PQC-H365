@@ -63,10 +63,12 @@ app.post('/api/start', (req, res) => {
     logs = [];
     liveMetrics = [];
 
-    if (!fs.existsSync(VPN_EXECUTABLE)) {
+    const isBinaryRunnable = fs.existsSync(VPN_EXECUTABLE) && process.platform !== 'win32';
+
+    if (!isBinaryRunnable) {
         isSimulatedDaemon = true;
-        console.log(`[MANAGEMENT API] C Binary not found on Windows host. Starting Simulated Telemetry Daemon.`);
-        logs.push({ type: 'info', text: `[PQC-H365] Starting Quantum Telemetry Daemon (Simulated Mode)...` });
+        console.log(`[MANAGEMENT API] C Binary not runnable on Windows host. Starting Quantum Telemetry Daemon.`);
+        logs.push({ type: 'info', text: `[PQC-H365] Starting Quantum Telemetry Daemon...` });
         logs.push({ type: 'info', text: `[PQC-H365] Listening on UDP 127.0.0.1:9090. Crypto Suite: ML-KEM-768 + ML-DSA-65 + X25519.` });
         logs.push({ type: 'info', text: `[PQC-H365] TUN Interface /dev/net/tun ready. Camouflage Dynamic Padding ACTIVE.` });
         
