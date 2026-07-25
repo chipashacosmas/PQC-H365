@@ -55,8 +55,6 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-let isSimulatedDaemon = false;
-
 app.post('/api/start', (req, res) => {
     if (vpnProcess || isSimulatedDaemon) {
         return res.status(400).json({ error: 'VPN server is already running' });
