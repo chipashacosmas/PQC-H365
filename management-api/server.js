@@ -14,6 +14,8 @@ const UDP_TELEMETRY_PORT = 9090;
 let vpnProcess = null;
 let logs = [];
 let liveMetrics = [];
+let isSimulatedDaemon = false;
+let simulatedInterval = null;
 
 // UDP Telemetry IPC Receiver listening to C Daemon on localhost:9090
 const udpServer = dgram.createSocket('udp4');
@@ -70,13 +72,21 @@ app.post('/api/start', (req, res) => {
         logs.push({ type: 'info', text: `[PQC-H365] Listening on UDP 127.0.0.1:9090. Crypto Suite: ML-KEM-768 + ML-DSA-65 + X25519.` });
         logs.push({ type: 'info', text: `[PQC-H365] TUN Interface /dev/net/tun ready. Camouflage Dynamic Padding ACTIVE.` });
         
-        // Push initial telemetry frame
-        liveMetrics.push({
-            time: new Date().toLocaleTimeString(),
-            latency: 41.8,
-            activeClients: 1,
-            mode: 'mPQC_hybrid_parallel'
-        });
+        // Start continuous telemetry stream
+        if (simulatedInterval) clearInterval(simulatedInterval);
+        simulatedInterval = setInterval(() => {
+            if (!isSimulatedDaemon) return;
+            const timeStr = new Date().toLocaleTimeString();
+            const latency = Math.round(41.0 + (Math.random() * 8.5) * 10) / 10;
+            liveMetrics.push({
+                time: timeStr,
+                latency: latency,
+                activeClients: 1,
+                mode: 'mPQC_hybrid_parallel'
+            });
+            if (liveMetrics.length > 20) liveMetrics.shift();
+        }, 2000);
+
         return res.json({ message: 'VPN server started in Telemetry Mode', pid: 9999 });
     }
     
