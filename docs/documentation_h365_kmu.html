@@ -183,14 +183,14 @@
 <div class="cover-page">
     <div style="font-size: 14pt; letter-spacing: 3px; color: #3b82f6; font-weight: 800; margin-bottom: 20px;">RESEARCH & ENGINEERING DOCUMENTATION</div>
     <div class="cover-title">PQC-H365: Quantum-Resistant Hybrid VPN</div>
-    <div class="cover-subtitle">Complete Architecture Rationale, Cryptographic Standards (NIST FIPS 203/204), System Design & Defensive Engineering Report</div>
+    <div class="cover-subtitle">Comprehensive Technical Rationale, Technologies & Tools Used, Cryptographic Standards (NIST FIPS 203/204), and System Design Report</div>
     
     <div class="cover-meta">
         <p><strong>Institution / Author:</strong> H-365_KMU</p>
         <p><strong>Security Classification:</strong> High-Assurance Defense Prototype</p>
         <p><strong>Compliance Standards:</strong> NIST FIPS 203 (ML-KEM), NIST FIPS 204 (ML-DSA), NSA CNSA 2.0</p>
         <p><strong>Date:</strong> July 2026</p>
-        <p><strong>Watermark Identification:</strong> <code>H-365_KMU</code></p>
+        <p><strong>Watermark Identifier:</strong> <code>H-365_KMU</code></p>
     </div>
 </div>
 
@@ -210,10 +210,92 @@ Modern internet communications rely heavily on public-key cryptosystems such as 
     PQC-H365 was engineered to provide immediate, high-performance protection against HNDL attacks and future quantum threats by deploying a **Hybrid Post-Quantum VPN Tunnel** paired with an enterprise Zero-Trust Control Plane.
 </div>
 
-<!-- SECTION 2 -->
-<h1>2. Cryptographic Architecture & Standards Selection</h1>
+<!-- SECTION 2: TECHNOLOGIES AND TOOLS USED -->
+<h1>2. Comprehensive Technologies & Tools Used</h1>
 
-<h2>2.1 Algorithm Suite Overview</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Technology / Tool</th>
+            <th>Category</th>
+            <th>Version / Standard</th>
+            <th>Role & Application in PQC-H365</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><code>liboqs</code></td>
+            <td>PQC Crypto Library</td>
+            <td>Open Quantum Safe v0.10+</td>
+            <td>Core Post-Quantum library providing NIST FIPS 203 (ML-KEM-768) key exchange and FIPS 204 (ML-DSA-65) digital signatures.</td>
+        </tr>
+        <tr>
+            <td><code>OpenSSL</code></td>
+            <td>Classical Crypto Library</td>
+            <td>OpenSSL 3.0+ (EVP API)</td>
+            <td>Handles classical X25519 Diffie-Hellman key exchange, HKDF-SHA256 key derivation, and AES-256-GCM AEAD encryption.</td>
+        </tr>
+        <tr>
+            <td><code>C11 Language</code></td>
+            <td>Core Data Plane Language</td>
+            <td>ISO/IEC 9899:2011 (GCC/Clang)</td>
+            <td>Core implementation language for high-speed, non-blocking asynchronous socket server and packet routing engines.</td>
+        </tr>
+        <tr>
+            <td><code>POSIX Threads</code></td>
+            <td>Concurrency Library</td>
+            <td><code>pthread.h</code></td>
+            <td>Multithreaded parallel engine executing X25519 and ML-KEM-768 operations concurrently to minimize handshake latency.</td>
+        </tr>
+        <tr>
+            <td><code>Linux TUN/TAP Driver</code></td>
+            <td>Kernel Network Device</td>
+            <td><code>/dev/net/tun</code></td>
+            <td>Virtual network interface driver enabling raw IP packet capture and injection for real VPN tunnel routing.</td>
+        </tr>
+        <tr>
+            <td><code>eBPF / XDP</code></td>
+            <td>In-Kernel Accelerator</td>
+            <td>Linux Kernel XDP Hook</td>
+            <td>Fast-path packet loader wrapper (<code>ebpf_xdp.c</code>) bypassing user-space copy bottlenecks for bare-metal packet speed.</td>
+        </tr>
+        <tr>
+            <td><code>Node.js & Express</code></td>
+            <td>Control Plane Backend</td>
+            <td>Node.js v18+ / Express.js</td>
+            <td>Management API & native UDP <code>dgram</code> socket receiver consuming live JSON telemetry datagrams from the C server on port 9090.</td>
+        </tr>
+        <tr>
+            <td><code>React 18 & Vite</code></td>
+            <td>Control Plane Frontend</td>
+            <td>React 18.3 / Vite 5</td>
+            <td>Modern user interface presenting daemon status, live terminal logs, and connection management controls.</td>
+        </tr>
+        <tr>
+            <td><code>Recharts</code></td>
+            <td>Data Visualization Library</td>
+            <td>Recharts v2.12</td>
+            <td>Responsive line charting engine rendering real-time live latency (ms) streaming from the C daemon.</td>
+        </tr>
+        <tr>
+            <td><code>CMake</code></td>
+            <td>Build System Generator</td>
+            <td>CMake 3.16+</td>
+            <td>Cross-platform build system generating build targets for C libraries, server/client executables, and benchmarking tools.</td>
+        </tr>
+        <tr>
+            <td><code>Git</code></td>
+            <td>Version Control System</td>
+            <td>Git v2.x</td>
+            <td>Distributed version control tracking project evolution across clean, structured architectural commit milestones.</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- SECTION 3 -->
+<h1>3. Cryptographic Architecture & Standards Selection</h1>
+
+<h2>3.1 Algorithm Suite Overview</h2>
 <table>
     <thead>
         <tr>
@@ -257,16 +339,16 @@ Modern internet communications rely heavily on public-key cryptosystems such as 
     </tbody>
 </table>
 
-<h2>2.2 "What We Did & Why": Cryptographic Design Decisions</h2>
+<h2>3.2 "What We Did & Why": Cryptographic Design Decisions</h2>
 <ul>
     <li><strong>Why Hybrid Key Exchange (X25519 + ML-KEM-768)?</strong> Post-quantum lattice algorithms are relatively new compared to classical ECC. By combining X25519 and ML-KEM-768 into HKDF-SHA256, the tunnel remains 100% secure even if *either* X25519 or ML-KEM is broken in the future.</li>
     <li><strong>Why ML-DSA-65 (FIPS 204)?</strong> Key exchange without authentication is vulnerable to Man-in-the-Middle (MitM) attacks. ML-DSA-65 signs the session transcript, providing mathematical proof of server and client identity.</li>
 </ul>
 
-<!-- SECTION 3 -->
-<h1>3. Systems Architecture & Networking Data Plane</h1>
+<!-- SECTION 4 -->
+<h1>4. Systems Architecture & Networking Data Plane</h1>
 
-<h2>3.1 Core C Data Plane Engine</h2>
+<h2>4.1 Core C Data Plane Engine</h2>
 <p>
 The core C daemon was designed for maximum speed, asynchronous execution, and bare-metal packet routing on Linux environments.
 </p>
@@ -308,33 +390,33 @@ The core C daemon was designed for maximum speed, asynchronous execution, and ba
     </tbody>
 </table>
 
-<!-- SECTION 4 -->
-<h1>4. Advanced Defensive Engineering & Threat Mitigations</h1>
+<!-- SECTION 5 -->
+<h1>5. Advanced Defensive Engineering & Threat Mitigations</h1>
 
-<h2>4.1 DPI Traffic Camouflage (Dynamic Padding)</h2>
+<h2>5.1 DPI Traffic Camouflage (Dynamic Padding)</h2>
 <p>
 ML-KEM-768 public keys (1,184B) and ML-DSA-65 signatures (3,309B) create rigid packet size signatures. To prevent Deep Packet Inspection (DPI) firewalls from fingerprinting and blocking the VPN, we implemented <code>pqc_send_padded_frame()</code> in <code>src/common/framing.c</code>, which injects 16 to 128 bytes of randomized pseudorandom padding to distort frame sizes.
 </p>
 
-<h2>4.2 Signed Anti-Downgrade Policy Lock</h2>
+<h2>5.2 Signed Anti-Downgrade Policy Lock</h2>
 <p>
 To counter active MitM quantum-stripping attacks (where an adversary drops PQC headers to force a Classical fallback), the server embeds a <code>PQC_POLICY_STRICT_PQC</code> bitmask directly inside the ML-DSA-65 signed payload. Any tampering or forced downgrade causes instant connection termination.
 </p>
 
-<h2>4.3 Zero-Trust Micro-Segmentation Engine (ZTNA)</h2>
+<h2>5.3 Zero-Trust Micro-Segmentation Engine (ZTNA)</h2>
 <p>
 Located in <code>src/common/ztna.c</code>, the ZTNA engine inspects destination IPv4 addresses and TCP/UDP ports against client-specific ML-DSA-65 identities. Unauthorized network traffic is dropped at Layer 7 before ever reaching the TUN interface.
 </p>
 
-<!-- SECTION 5 -->
-<h1>5. Control Plane & Empirical Benchmarks</h1>
+<!-- SECTION 6 -->
+<h1>6. Control Plane & Empirical Benchmarks</h1>
 
-<h2>5.1 Fullstack React/Node Control Plane & Telemetry Pipeline</h2>
+<h2>6.1 Fullstack React/Node Control Plane & Telemetry Pipeline</h2>
 <p>
 The management interface consists of a **Node.js Express API** listening to a non-blocking **UDP Telemetry Socket (port 9090)** emitted by the C server. Real-time metrics are rendered in a sleek, dark-mode **React / Vite Dashboard** using Recharts line visualizers.
 </p>
 
-<h2>5.2 Empirical Micro-Benchmarking Results</h2>
+<h2>6.2 Empirical Micro-Benchmarking Results</h2>
 <pre>
 ========================================================================
      POST-QUANTUM HYBRID VPN (PQC-H365) EMPIRICAL BENCHMARK SUITE       
