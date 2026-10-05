@@ -136,3 +136,14 @@ add_executable(pqc_benchmark src/benchmarks/benchmark.c)
 target_include_directories(pqc_benchmark PRIVATE ${LIBOQS_INCLUDE_DIRS} src/common)
 target_link_directories(pqc_benchmark PRIVATE ${LIBOQS_LIBRARY_DIRS})
 target_link_libraries(pqc_benchmark PRIVATE pqc_common oqs crypto)
+
+
+add_executable(pqc_channel_server src/server/channel_server.c)
+target_include_directories(pqc_channel_server PRIVATE ${LIBOQS_INCLUDE_DIRS} src/common)
+target_link_directories(pqc_channel_server PRIVATE ${LIBOQS_LIBRARY_DIRS})
+target_link_libraries(pqc_channel_server PRIVATE pqc_common oqs crypto)
+
+add_executable(pqc_channel_client src/client/channel_client.c)
+target_include_directories(pqc_channel_client PRIVATE ${LIBOQS_INCLUDE_DIRS} src/common)
+target_link_directories(pqc_channel_client PRIVATE ${LIBOQS_LIBRARY_DIRS})
+target_link_libraries(pqc_channel_client PRIVATE pqc_common oqs crypto)
