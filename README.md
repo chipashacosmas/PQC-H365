@@ -1,8 +1,15 @@
-# PQC-H365: Next-Generation Quantum-Resistant Hybrid VPN & Zero-Trust Control Plane
+# PQC-H365: Quantum-Resistant Hybrid VPN & Multi-Message Secure Transport
 
-> **An Enterprise-Grade, 100Gbps-Capable Post-Quantum VPN & Telemetry Architecture**
-> 
-> *Built with NIST FIPS 203 (ML-KEM-768), NIST FIPS 204 (ML-DSA-65), POSIX Multithreaded Acceleration, Linux TUN/TAP Data Plane, eBPF/XDP Acceleration, ZTNA Micro-Segmentation, and a React/Node.js Control Plane.*
+[![Q-Hack India 2026](https://img.shields.io/badge/Q--Hack%20India%202026-Quantum%20Security%20%26%20Cryptography-blueviolet?style=for-the-badge)](https://github.com/chipashacosmas/PQC-H365)
+[![Demo Video](https://img.shields.io/badge/YouTube-Live%20Demo%20Video-red?style=for-the-badge&logo=youtube)](https://youtube.com/watch?v=KZSbHbDPfOk)
+[![Presentation Deck](https://img.shields.io/badge/Slide%20Deck-PPTX%20%2F%20PDF-orange?style=for-the-badge&logo=microsoftpowerpoint)](docs/Q-Hack_India26_PQC_H365_FINAL.pptx)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
+
+> **Official Q-Hack India 2026 Submission**  
+> **Team:** PQC H-365 | **Lead:** Cosmas Chipasha  
+> **Track:** Quantum Security & Cryptography  
+> **Live Video Demo:** [Watch on YouTube (2 min)](https://youtube.com/watch?v=KZSbHbDPfOk)  
+> **Slide Deck:** [Q-Hack_India26_PQC_H365_FINAL.pptx](docs/Q-Hack_India26_PQC_H365_FINAL.pptx) | [PDF View](docs/Q-Hack_India26_PQC_H365.pdf)
 
 ---
 
