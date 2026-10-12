@@ -1,5 +1,6 @@
 # PQC-H365: Quantum-Resistant Hybrid VPN & Multi-Message Secure Transport
 
+[![PQC-H365 CI](https://github.com/chipashacosmas/PQC-H365/actions/workflows/ci.yml/badge.svg)](https://github.com/chipashacosmas/PQC-H365/actions/workflows/ci.yml)
 [![Q-Hack India 2026](https://img.shields.io/badge/Q--Hack%20India%202026-Quantum%20Security%20%26%20Cryptography-blueviolet?style=for-the-badge)](https://github.com/chipashacosmas/PQC-H365)
 [![Demo Video](https://img.shields.io/badge/YouTube-Live%20Demo%20Video-red?style=for-the-badge&logo=youtube)](https://youtube.com/watch?v=KZSbHbDPfOk)
 [![Presentation Deck](https://img.shields.io/badge/Slide%20Deck-PPTX%20%2F%20PDF-orange?style=for-the-badge&logo=microsoftpowerpoint)](docs/Q-Hack_India26_PQC_H365_FINAL.pptx)
