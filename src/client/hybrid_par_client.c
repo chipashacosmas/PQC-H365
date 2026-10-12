@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define DEFAULT_PORT 4448
 #define X25519_LEN 32U
